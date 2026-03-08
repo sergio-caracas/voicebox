@@ -1,0 +1,42 @@
+# =============================================================================
+# Voicebox — CUDA GPU override for docker-compose
+#
+# Layer this on top of the base docker-compose.yml to enable NVIDIA GPU
+# acceleration for Qwen3-TTS inference (much faster than CPU):
+#
+#   docker-compose -f docker-compose.yml -f docker-compose.cuda.yml up -d
+#
+# Requirements:
+#   • NVIDIA GPU with CUDA 12.x drivers installed on the host
+#   • nvidia-container-toolkit installed  (https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)
+#   • Run: sudo systemctl restart docker   after installing the toolkit
+#
+# Verify GPU is visible inside the container:
+#   docker-compose exec voicebox nvidia-smi
+# =============================================================================
+
+version: '3.8'
+
+services:
+  voicebox:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        # Override the pip install to get the CUDA-enabled torch wheel.
+        # This build arg is used in Dockerfile.cuda (see below) or you can
+        # re-build the base image with CUDA torch manually.
+        TORCH_INDEX_URL: "https://download.pytorch.org/whl/cu121"
+
+    environment:
+      # Tell PyTorch / voicebox backend that CUDA is available
+      - CUDA_VISIBLE_DEVICES=0
+      - PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512
+
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1       # Use 1 GPU; set to 'all' to use all available GPUs
+              capabilities: [gpu]

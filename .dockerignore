@@ -1,0 +1,58 @@
+# =============================================================================
+# .dockerignore — files excluded from the Docker build context
+# Keeping the context small speeds up builds and avoids leaking secrets.
+# =============================================================================
+
+# Version control
+.git
+.gitignore
+
+# Node / Bun
+node_modules
+**/node_modules
+bun.lock           # bun install uses this but it's re-read from the image
+
+# Python artifacts
+__pycache__
+**/__pycache__
+*.pyc
+*.pyo
+*.egg-info
+.venv
+venv
+.pytest_cache
+
+# Build outputs (rebuilt inside Docker)
+dist
+build
+web/dist
+tauri/target        # Rust build artifacts (not needed in container)
+.tauri
+
+# Desktop/native app — not needed in Docker (server-only deployment)
+tauri/
+mlx-test/          # Apple Silicon MLX tests — not applicable in Docker
+
+# Docs and landing page (not served by the container)
+docs/
+landing/
+
+# Scripts (build scripts, not needed at runtime)
+scripts/
+
+# Environment files — never bake secrets into the image
+.env
+.env.local
+.env.*
+!.env.example       # Keep the example file (no secrets in it)
+
+# Editor and OS noise
+.DS_Store
+.vscode
+.idea
+*.swp
+*.swo
+Thumbs.db
+
+# Large data directories — these are mounted as Docker volumes at runtime
+data/

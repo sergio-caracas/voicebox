@@ -1,0 +1,58 @@
+# =============================================================================
+# Voicebox — Docker Compose (CPU / base)
+#
+# Usage:
+#   docker-compose up -d          → build and start (CPU inference)
+#   docker-compose up -d --build  → force rebuild before starting
+#   docker-compose down           → stop and remove containers
+#   docker-compose logs -f        → stream logs
+#
+# For CUDA GPU acceleration, also layer the CUDA override:
+#   docker-compose -f docker-compose.yml -f docker-compose.cuda.yml up -d
+# =============================================================================
+
+version: '3.8'
+
+services:
+  voicebox:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: voicebox:latest
+    container_name: voicebox
+
+    ports:
+      # Backend API + web UI are both served by FastAPI on this port.
+      # Access the web app at http://localhost:17493
+      # Access API docs at  http://localhost:17493/docs
+      - "17493:17493"
+
+    environment:
+      - PYTHONUNBUFFERED=1
+      # DATA_DIR is where voicebox writes its SQLite DB, profiles, and audio.
+      - DATA_DIR=/app/data
+      # HF_HOME points the HuggingFace downloader at our persistent cache volume.
+      - HF_HOME=/app/hf_cache
+
+    volumes:
+      # Persistent voice profiles, generated audio, SQLite DB, and prompt cache.
+      - voicebox-data:/app/data
+      # Persistent HuggingFace model cache (Qwen3-TTS is 2-4 GB).
+      # Avoids re-downloading the model on every container restart.
+      - voicebox-hf-cache:/app/hf_cache
+
+    restart: unless-stopped
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:17493/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 5
+
+# Named volumes — Docker manages these on the host filesystem.
+# List with:  docker volume ls | grep voicebox
+# Inspect:    docker volume inspect voicebox_voicebox-data
+volumes:
+  voicebox-data:
+  voicebox-hf-cache:
