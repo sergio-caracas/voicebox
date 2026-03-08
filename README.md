@@ -1,5 +1,5 @@
 <p align="center">
-  <img src=".github/assets/icon-dark.webp" alt="Voicebox" width="120" height="120" />
+  <img src="./icon-dark.jpg" alt="Voicebox" width="160" height="160" />
 </p>
 
 <h1 align="center">Voicebox — Docker Edition</h1>
@@ -64,7 +64,7 @@
 ```powershell
 git clone https://github.com/sergio-caracas/voicebox-docker.git
 
-cd voicebox
+cd voicebox-docker
 
 # Start with NVIDIA GPU acceleration (recommended)
 docker-compose -f docker-compose.yml -f docker-compose.cuda.yml up -d
