@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./icon-dark.jpg" alt="Voicebox" width="160" height="160" />
+  <img src="./icon-dark.png" alt="Voicebox" width="160" height="160" />
 </p>
 
 <h1 align="center">Voicebox — Docker Edition</h1>
