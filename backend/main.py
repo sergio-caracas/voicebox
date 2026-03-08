@@ -70,7 +70,11 @@ app.add_middleware(
 
 @app.get("/")
 async def root():
-    """Root endpoint."""
+    # Serve web UI if available, otherwise return API info
+    static_index = Path(__file__).parent / "static" / "index.html"
+    if static_index.exists():
+        from fastapi.responses import FileResponse
+        return FileResponse(str(static_index))
     return {"message": "voicebox API", "version": __version__}
 
 

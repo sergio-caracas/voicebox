@@ -1,189 +1,188 @@
-# Running Voicebox in Docker
+# Voicebox — Docker Setup Guide
 
-This guide covers running Voicebox as a Docker container on **Linux or Windows** with CPU or CUDA GPU inference. The container runs the Python FastAPI backend and serves the web UI — no desktop app or Rust build required.
-
-> **Apple Silicon (M1/M2/M3)?** The MLX backend that gives 4–5× faster inference only works on macOS natively. Use the [macOS desktop app](https://github.com/jamiepine/voicebox/releases) instead.
-
----
-
-## What the container includes
-
-| Component | Details |
-|-----------|---------|
-| FastAPI backend | Python 3.11, port **17493** |
-| Web frontend | Built React/Vite SPA, served as static files by FastAPI |
-| Voice model | Qwen3-TTS — auto-downloaded from HuggingFace on first use |
-| Transcription | Whisper (PyTorch) |
-| Inference backend | PyTorch CPU by default; CUDA GPU via override (see below) |
+This guide covers running **voicebox** in Docker on Windows with an NVIDIA GPU (CUDA).  
+The container runs both the FastAPI backend and serves the React web UI on a single port.
 
 ---
 
-## Prerequisites
+## Requirements
 
-- [Docker](https://docs.docker.com/get-docker/) ≥ 20.10
-- [Docker Compose](https://docs.docker.com/compose/install/) ≥ 1.29
-- **RAM:** 8 GB minimum, 16 GB recommended (the 1.7B model needs ~6 GB)
-- **Disk:** 10 GB free (model weights + build layers)
-- **GPU (optional):** NVIDIA GPU + [nvidia-container-toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) with the **WSL2 backend** enabled
+- Windows 10/11 with an NVIDIA GPU
+- Docker Desktop Settings → **Resources → Enable GPU** (no extra toolkit needed on Windows)
 
 ---
 
-## Quick start (CPU)
+## Quick Start (CPU only)
 
-```bash
-# 1. Clone your fork
-git clone https://github.com/sergio-caracas/voicebox.git
-cd voicebox
-
-# 2. Build the image and start the container
-docker-compose up -d --build
-
-# 3. Stream logs to watch the startup (first run downloads the model)
-docker-compose logs -f
-
-# 4. Open the app
-#    Web UI:  http://localhost:17493
-#    API docs: http://localhost:17493/docs
+```powershell
+docker-compose up -d
 ```
 
-The first startup will download the Qwen3-TTS model (~4 GB) from HuggingFace. Subsequent starts use the cached weights from the `voicebox-hf-cache` volume and boot in seconds.
+Access the app at **http://localhost:17493**
+
+> ⚠️ CPU mode is very slow for TTS generation. Use the CUDA method below if you have an NVIDIA GPU.
 
 ---
 
-## GPU acceleration (CUDA)
+## Quick Start (NVIDIA GPU / CUDA) — Recommended
 
-Layer the CUDA override on top of the base compose file:
-
-```bash
-# Requires nvidia-container-toolkit on the host
-docker-compose -f docker-compose.yml -f docker-compose.cuda.yml up -d --build
-
-# Verify the GPU is visible inside the container
-docker-compose exec voicebox nvidia-smi
+```powershell
+docker-compose -f docker-compose.yml -f docker-compose.cuda.yml up -d
 ```
 
-Install nvidia-container-toolkit (Ubuntu/Debian):
-```bash
-curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
-curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
-  sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
-  sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
-sudo apt-get update && sudo apt-get install -y nvidia-container-toolkit
-sudo systemctl restart docker
+Verify the GPU is detected:
+
+```powershell
+docker logs voicebox --tail 15
+```
+
+You should see a line like:
+```
+GPU available: CUDA (NVIDIA GeForce RTX XXXX)
 ```
 
 ---
 
-## Managing the container
+## Stopping the Container
 
-```bash
-# Stop the container
+```powershell
 docker-compose down
+```
 
-# Stop and remove all volumes (DELETES voice profiles and generated audio!)
-docker-compose down -v
+Your data (voice profiles, generation history, database, cached models) is stored in Docker volumes and **persists across restarts**.
 
-# Rebuild after a code change
+---
+
+## Rebuilding After Code Changes
+
+```powershell
+# CPU
 docker-compose up -d --build
 
-# Open a shell inside the running container
-docker-compose exec voicebox bash
+# CUDA (recommended)
+docker-compose -f docker-compose.yml -f docker-compose.cuda.yml up -d --build
 ```
 
 ---
 
-## Data persistence
+## First Run — Model Download
 
-Docker named volumes keep your data safe across container restarts:
+The Qwen3-TTS model is **not bundled** in the image. It downloads automatically from HuggingFace on the first generation request (~4 GB for the 1.7B model). This only happens once — the model is cached in the `voicebox-hf-cache` Docker volume.
 
-| Volume | Path inside container | Contents |
-|--------|-----------------------|----------|
-| `voicebox-data` | `/app/data` | SQLite DB, voice profiles, generated audio, prompt cache |
-| `voicebox-hf-cache` | `/app/hf_cache` | Downloaded Qwen3-TTS and Whisper model weights |
+Watch the download progress:
 
-```bash
-# List volumes
-docker volume ls | grep voicebox
-
-# Back up your voice profiles and generated audio
-docker run --rm \
-  -v voicebox_voicebox-data:/data \
-  -v $(pwd):/backup \
-  alpine tar czf /backup/voicebox-data-backup.tar.gz -C /data .
-
-# Restore from backup
-docker run --rm \
-  -v voicebox_voicebox-data:/data \
-  -v $(pwd):/backup \
-  alpine tar xzf /backup/voicebox-data-backup.tar.gz -C /data
+```powershell
+docker logs voicebox -f
 ```
 
 ---
 
-## Environment variables
+## Access Points
 
-Copy `.env.example` to `.env` to override defaults:
+| URL | Description |
+|-----|-------------|
+| http://localhost:17493 | Web UI |
+| http://localhost:17493/docs | FastAPI interactive API docs |
+| http://localhost:17493/health | Health check endpoint |
 
-```bash
-cp .env.example .env
+---
+
+## Volume Management
+
+Two named volumes store persistent data:
+
+| Volume | Contents |
+|--------|----------|
+| `voicebox_voicebox-data` | Database, voice profiles, generated audio |
+| `voicebox_voicebox-hf-cache` | Downloaded HuggingFace models |
+
+### List volumes
+```powershell
+docker volume ls
+```
+
+### Delete all data and start fresh
+```powershell
+docker-compose down -v
+```
+
+> ⚠️ This deletes all your voice profiles, history, and cached models permanently.
+
+### Delete only the model cache (force re-download)
+```powershell
+docker volume rm voicebox_voicebox-hf-cache
+```
+
+---
+
+## Environment Variables
+
+Copy `.env.example` to `.env` to customise behaviour:
+
+```powershell
+copy .env.example .env
 ```
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `DATA_DIR` | `/app/data` | Where voicebox stores its database and audio |
-| `HF_HOME` | `/app/hf_cache` | HuggingFace model download cache |
-| `DEFAULT_MODEL` | *(auto)* | Pre-select a model: `Qwen/Qwen3-TTS-12Hz-1.7B-Base` or `Qwen/Qwen3-TTS-12Hz-0.6B-Base` |
-| `CUDA_VISIBLE_DEVICES` | *(unset)* | GPU index (CUDA override only) |
+| `DATA_DIR` | `/app/data` | Path inside container for app data |
+| `HF_HOME` | `/app/hf_cache` | HuggingFace cache directory |
+| `DEFAULT_MODEL` | `Qwen/Qwen3-TTS-0.6B` | TTS model to use |
+| `CUDA_VISIBLE_DEVICES` | `0` | GPU index (CUDA compose only) |
+
+---
+
+## Checking GPU Usage During Generation
+
+While a generation is running:
+
+```powershell
+docker exec voicebox nvidia-smi
+```
+
+You should see GPU memory being consumed during inference.
 
 ---
 
 ## Troubleshooting
 
-**Container exits immediately**
-```bash
-docker-compose logs voicebox   # Check the error message
+### Container starts but GPU not detected
+- Open Docker Desktop → Settings → Resources → check GPU is enabled
+- Restart Docker Desktop
+- Re-run with the CUDA compose files
+
+### Port already in use
+```powershell
+# Find what's using port 17493
+netstat -ano | findstr :17493
 ```
 
-**Port 17493 already in use**
-```bash
-# Find what's using it
-lsof -i :17493       # Linux/macOS
-netstat -ano | findstr 17493   # Windows
-
-# Or change the host port in docker-compose.yml:
-ports:
-  - "8080:17493"   # Access at http://localhost:8080 instead
+### View full container logs
+```powershell
+docker logs voicebox
 ```
 
-**Model download times out or fails**
-The model is downloaded at runtime on the first generation request, not at container startup. If the download fails mid-way, it will resume from the volume cache on the next attempt. Check logs with `docker-compose logs -f` and wait — it can take several minutes on slow connections.
+### Restart without rebuilding
+```powershell
+docker-compose -f docker-compose.yml -f docker-compose.cuda.yml restart
+```
 
-**Out of memory during inference**
-Use the smaller 0.6B model by setting `DEFAULT_MODEL=Qwen/Qwen3-TTS-12Hz-0.6B-Base` in your `.env` file.
-
-**GPU not detected**
-```bash
-# Confirm toolkit is installed
-docker run --rm --gpus all nvidia/cuda:12.1-base-ubuntu22.04 nvidia-smi
+### Shell into the running container
+```powershell
+docker exec -it voicebox bash
 ```
 
 ---
 
-## API usage
+## Docker Compose File Reference
 
-Once running, the backend exposes a full REST API:
+| File | Purpose |
+|------|---------|
+| `docker-compose.yml` | Base service definition (CPU) |
+| `docker-compose.cuda.yml` | CUDA GPU override — layer on top of base |
 
-```bash
-# Generate speech
-curl -X POST http://localhost:17493/generate \
-  -H "Content-Type: application/json" \
-  -d '{"text": "Hello from Docker", "profile_id": "abc123", "language": "en"}'
-
-# List voice profiles
-curl http://localhost:17493/profiles
-
-# Health check
-curl http://localhost:17493/health
+Always use **both files together** for GPU support:
+```powershell
+docker-compose -f docker-compose.yml -f docker-compose.cuda.yml <command>
 ```
-
-Full interactive API docs: **http://localhost:17493/docs**

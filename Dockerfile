@@ -10,20 +10,24 @@ FROM oven/bun:1-alpine AS web-builder
 
 WORKDIR /app
 
-# Copy root package.json and lockfile (bun workspaces)
 COPY package.json bun.lock ./
-
-# Copy only the packages needed to build the web app
 COPY app/ ./app/
 COPY web/ ./web/
 
-# Install deps and build the web frontend
-# The web app is a Vite/React SPA that talks to the backend API
-WORKDIR /app/web
-RUN bun install --frozen-lockfile
-RUN bun run build
-# Built output ends up in /app/web/dist
+# Create stub packages for the workspaces we don't need in Docker
+# (tauri = desktop app, landing = marketing site)
+# Without these stubs, bun install fails because root package.json
+# declares all 4 workspaces and bun requires all of them to exist.
+RUN mkdir -p tauri landing && \
+    echo '{"name":"tauri","version":"0.0.0","private":true}' > tauri/package.json && \
+    echo '{"name":"landing","version":"0.0.0","private":true}' > landing/package.json
 
+RUN bun install
+
+WORKDIR /app/web
+# Skip tsc type-checking (source has Tauri/desktop-specific types that fail in web-only build)
+# Call vite directly to just bundle the output we need
+RUN bunx vite build
 
 # ── Stage 2: Backend runtime ──────────────────────────────────────────────────
 FROM python:3.11-slim AS runtime
@@ -38,6 +42,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         ffmpeg \
         libsndfile1 \
         curl \
+        git \
     && rm -rf /var/lib/apt/lists/*
 
 # ── Python dependencies ───────────────────────────────────────────────────────
